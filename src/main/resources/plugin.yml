@@ -1,11 +1,34 @@
 name: MobWave
-description: $description
-prefix: MobeWave
+description: Solo-Arena Mob-Wave Event Plugin
+prefix: MobWave
 version: '${version}'
 
 main: de.sintrax.mobWave.MobWave
-api-version: '1.21.11'
+api-version: '1.21'
 load: STARTUP
 
 authors: [Sintrax]
 website: glowingparadise.net
+
+softdepend: [PlaceholderAPI, FastAsyncWorldEdit]
+
+commands:
+  mobwave:
+    description: MobWave Admin-Befehl
+    usage: /mobwave <setup|wizard|start|stop|info>
+    aliases: [mw]
+  ready:
+    description: Spieler ist bereit für die Wave
+    usage: /ready
+  team:
+    description: Team-Verwaltung für das MobWave-Event
+    usage: /team <create|invite|accept|join|leave|info>
+    aliases: [t]
+
+permissions:
+  mobwave.admin:
+    description: Zugang zu Admin-Befehlen
+    default: op
+  mobwave.play:
+    description: Erlaubt die Teilnahme am Event
+    default: true

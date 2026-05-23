@@ -1,0 +1,104 @@
+# MobWave Configuration
+# Autor: Sintrax | GlowingParadise
+
+prefix: "§8[§6GlowingParadise§8]§7 "
+
+# Datenbank-Einstellungen
+database:
+  host: "localhost"
+  port: 3306
+  name: "mobwave"
+  user: "root"
+  password: "password"
+  tablePrefix: "mw_"
+
+# Template-Welt-System
+# Admin richtet die Template-Welt einmal ein (/mw template setup)
+# Beim Start werden N Kopien für die Spieler generiert
+template:
+  # Countdown-Sekunden beim Start – Welten werden während des Countdowns vorbereitet
+  startCountdown: 10
+
+# Event-Einstellungen
+event:
+  # Arena-ID, der Spieler beim Betreten automatisch beitreten (leer = erste verfügbare)
+  defaultArena: ""
+  minPlayers: 2
+  maxPlayers: 10
+  # Minimale Wave-Anzahl bis zum Sieg
+  minWaves: 15
+  # Maximale Wave-Anzahl
+  maxWaves: 20
+  # Automatischer Start der Wave nach X Sekunden (wenn nicht alle /ready)
+  equipPhaseTimeout: 90
+  # Countdown vor dem Kampf (Sekunden)
+  waveStartCountdown: 5
+
+# Punkte-System
+points:
+  waveCompleted: 5
+  perfectRunBonus: 5
+
+# Loot-Konfiguration
+loot:
+  # Items pro Loot-Kiste (gemischter Loot aus allen Kategorien)
+  itemsPerChest: 5
+
+# Shop-Preise
+shop:
+  items:
+    IRON_SWORD: 10
+    DIAMOND_SWORD: 25
+    BOW: 15
+    IRON_CHESTPLATE: 12
+    DIAMOND_CHESTPLATE: 30
+    GOLDEN_APPLE: 8
+    SPLASH_POTION: 6
+    OBSIDIAN: 3
+
+# Wave-Typ Wahrscheinlichkeiten (Wellen 1-9)
+wave_chances_early:
+  EASY: 30
+  STANDARD: 45
+  HARD: 15
+  CHAOS: 7
+  BOSS: 3
+
+# Wave-Typ Wahrscheinlichkeiten (Wellen 10-14)
+wave_chances_mid:
+  EASY: 10
+  STANDARD: 35
+  HARD: 30
+  CHAOS: 15
+  BOSS: 10
+
+# Wave-Typ Wahrscheinlichkeiten (Wellen 15+)
+wave_chances_late:
+  EASY: 5
+  STANDARD: 20
+  HARD: 30
+  CHAOS: 25
+  BOSS: 20
+
+# Mob-Konfiguration pro Wave-Typ (Basis-Anzahl * Wellennummer)
+wave_mobs:
+  EASY:
+    base: 2
+    multiplier: 0.5
+    types: [ZOMBIE, SKELETON]
+  STANDARD:
+    base: 3
+    multiplier: 0.6
+    types: [ZOMBIE, SKELETON, SPIDER, CREEPER]
+  HARD:
+    base: 4
+    multiplier: 0.8
+    types: [ZOMBIE, SKELETON, CREEPER, WITCH, PILLAGER]
+  CHAOS:
+    base: 6
+    multiplier: 1.0
+    types: [ZOMBIE, SKELETON, CREEPER, WITCH, PILLAGER, RAVAGER, BLAZE]
+  BOSS:
+    base: 1
+    multiplier: 0.0
+    types: [ELDER_GUARDIAN, IRON_GOLEM, RAVAGER]
