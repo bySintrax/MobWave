@@ -309,7 +309,11 @@ public class MobWaveGame {
 
         for (UUID uuid : participants.keySet()) {
             Player player = Bukkit.getPlayer(uuid);
-            if (player == null) continue;
+            if (player == null) {
+                // Spieler ist offline (z.B. während Countdown disconnectet) → als ausgeschieden werten
+                deadPlayersThisWave.add(uuid);
+                continue;
+            }
             PlayerData data = participants.get(uuid);
             data.resetDamageFlag();
             PlayerArena pa = playerArenaMap.get(uuid);
@@ -395,7 +399,7 @@ public class MobWaveGame {
                 data.incrementWavesSurvived();
                 MessageUtil.send(player, "§a+" + waveCompletedPoints + " Punkte §7für Wave " + currentWave + "!");
 
-                if (!data.hasTookDamageThisWave()) {
+                if (!data.hasTookDamageThisWave() && !deadPlayersThisWave.contains(uuid)) {
                     data.addPoints(perfectRunBonus);
                     data.incrementPerfectRuns();
                     MessageUtil.send(player, "§6✦ Perfect Run! §e+" + perfectRunBonus + " Bonuspunkte!");
