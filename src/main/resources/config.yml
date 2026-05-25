@@ -36,7 +36,8 @@ event:
 
 # Punkte-System
 points:
-  waveCompleted: 5
+  waveCompleted: 3          # Basispunkte (Wave 1)
+  waveScalingPerWave: 1     # +1 Punkt pro Wave-Nummer (Wave 10 = 12 Pkt, Wave 20 = 22 Pkt)
   perfectRunBonus: 5
 
 # Loot-Konfiguration
@@ -58,45 +59,45 @@ shop:
 
 # Wave-Typ Wahrscheinlichkeiten (Wellen 1-9)
 wave_chances_early:
-  EASY: 30
+  EASY: 40
   STANDARD: 45
-  HARD: 15
-  CHAOS: 7
-  BOSS: 3
+  HARD: 12
+  CHAOS: 3
+  BOSS: 0
 
 # Wave-Typ Wahrscheinlichkeiten (Wellen 10-14)
 wave_chances_mid:
-  EASY: 10
-  STANDARD: 35
+  EASY: 15
+  STANDARD: 40
   HARD: 30
-  CHAOS: 15
-  BOSS: 10
+  CHAOS: 12
+  BOSS: 3
 
 # Wave-Typ Wahrscheinlichkeiten (Wellen 15+)
 wave_chances_late:
   EASY: 5
-  STANDARD: 20
-  HARD: 30
-  CHAOS: 25
-  BOSS: 20
+  STANDARD: 25
+  HARD: 35
+  CHAOS: 20
+  BOSS: 15
 
 # Mob-Konfiguration pro Wave-Typ (Basis-Anzahl * Wellennummer)
 wave_mobs:
   EASY:
     base: 2
-    multiplier: 0.5
+    multiplier: 0.3
     types: [ZOMBIE, SKELETON]
   STANDARD:
     base: 3
-    multiplier: 0.6
+    multiplier: 0.4
     types: [ZOMBIE, SKELETON, SPIDER, CREEPER]
   HARD:
-    base: 4
-    multiplier: 0.8
+    base: 3
+    multiplier: 0.5
     types: [ZOMBIE, SKELETON, CREEPER, WITCH, PILLAGER]
   CHAOS:
-    base: 6
-    multiplier: 1.0
+    base: 5
+    multiplier: 0.7
     types: [ZOMBIE, SKELETON, CREEPER, WITCH, PILLAGER, RAVAGER, BLAZE]
   BOSS:
     base: 1

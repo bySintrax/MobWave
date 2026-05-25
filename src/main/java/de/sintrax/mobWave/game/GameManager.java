@@ -28,6 +28,8 @@ public class GameManager {
     private final Map<UUID, PlayerData> cachedPlayerData = new ConcurrentHashMap<>();
     /** Spieler, die während EQUIP/WAVE disconnected sind und reconnecten dürfen. */
     private final Set<UUID> disconnectedPlayers = ConcurrentHashMap.newKeySet();
+    /** Spieler, die eine andere Instanz zuschauen (UUID → beobachtete gameId). */
+    private final Map<UUID, String> spectatingGameId = new ConcurrentHashMap<>();
     private final ShopManager shopManager;
 
     public GameManager(MobWave plugin) {
@@ -37,6 +39,7 @@ public class GameManager {
 
     public void leaveGame(Player player) {
         disconnectedPlayers.remove(player.getUniqueId());
+        spectatingGameId.remove(player.getUniqueId());
         String arenaId = playerGameMap.remove(player.getUniqueId());
         if (arenaId == null) return;
         MobWaveGame game = games.get(arenaId);
@@ -74,9 +77,23 @@ public class GameManager {
         }
     }
 
-    /** Entfernt ein beendetes Spiel aus der internen Map. */
+    /** Entfernt ein beendetes Spiel aus der internen Map und räumt Zuschauer auf. */
     public void cleanupGame(String arenaId) {
         games.remove(arenaId);
+
+        // Zuschauer die dieses Spiel beobachten: zurück in die Hauptwelt schicken
+        Location mainSpawn = Bukkit.getWorlds().get(0).getSpawnLocation();
+        spectatingGameId.entrySet().removeIf(entry -> {
+            if (!entry.getValue().equals(arenaId)) return false;
+            Player spectator = Bukkit.getPlayer(entry.getKey());
+            if (spectator != null && spectator.isOnline()) {
+                spectator.setGameMode(org.bukkit.GameMode.SURVIVAL);
+                spectator.teleport(mainSpawn);
+                MessageUtil.send(spectator, "§7Das beobachtete Spiel wurde beendet.");
+            }
+            return true;
+        });
+
         // Disconnected-Spieler deren Spiel endete: Daten speichern und aufräumen
         playerGameMap.entrySet().stream()
                 .filter(e -> e.getValue().equals(arenaId))
@@ -95,6 +112,31 @@ public class GameManager {
 
     public Set<String> getActiveGameIds() {
         return games.keySet();
+    }
+
+    /** Gibt true zurück wenn der Spieler gerade eine andere Instanz zuschauen. */
+    public boolean isSpectating(UUID uuid) {
+        return spectatingGameId.containsKey(uuid);
+    }
+
+    /** Meldet einen Spieler als Zuschauer einer Instanz an. */
+    public void addSpectator(UUID uuid, String gameId) {
+        spectatingGameId.put(uuid, gameId);
+    }
+
+    /** Entfernt den Spieler aus dem Zuschauer-Tracking. */
+    public void removeSpectator(UUID uuid) {
+        spectatingGameId.remove(uuid);
+    }
+
+    /** Findet ein aktives Spiel (EQUIP/WAVE) das nicht die eigene Instanz ist. */
+    public MobWaveGame findActiveGameToSpectate(String excludeGameId) {
+        for (Map.Entry<String, MobWaveGame> entry : games.entrySet()) {
+            if (entry.getKey().equals(excludeGameId)) continue;
+            GamePhase p = entry.getValue().getPhase();
+            if (p == GamePhase.EQUIP || p == GamePhase.WAVE) return entry.getValue();
+        }
+        return null;
     }
 
     /**

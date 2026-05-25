@@ -38,6 +38,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.GameMode;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -73,6 +75,14 @@ public class PlayerListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+
+        // Zuschauer-Modus (beendet eigenes Spiel, schaut anderem zu)
+        if (plugin.getGameManager().isSpectating(player.getUniqueId())) {
+            plugin.getGameManager().removeSpectator(player.getUniqueId());
+            plugin.getGameManager().unloadPlayerData(player);
+            return;
+        }
+
         MobWaveGame game = plugin.getGameManager().getGameByPlayer(player);
         if (game != null) {
             GamePhase phase = game.getPhase();
@@ -106,7 +116,21 @@ public class PlayerListener implements Listener {
         MobWaveGame game = plugin.getGameManager().getGameByPlayer(player);
         if (game == null) return;
 
-        // Eigene Ausrüstungsbasis oder Fallback zur Lobby
+        if (game.getPhase() == GamePhase.WAVE && game.isDeadThisWave(player.getUniqueId())) {
+            // Gestorbener Spieler → Spectator-Modus zur eigenen Arena-Base
+            PlayerArena pa = game.getPlayerArena(player.getUniqueId());
+            Location respawnLoc = pa != null && pa.getEquipSpawn() != null
+                    ? pa.getEquipSpawn() : game.getLobbySpawn();
+            if (respawnLoc != null) event.setRespawnLocation(respawnLoc);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
+                player.setGameMode(GameMode.SPECTATOR);
+                MessageUtil.send(player, "§7Du bist Zuschauer bis zur nächsten Ausrüstungsphase.");
+            }, 1L);
+            return;
+        }
+
+        // Normaler Respawn: eigene Ausrüstungsbasis oder Fallback zur Lobby
         PlayerArena pa = game.getPlayerArena(player.getUniqueId());
         Location respawnLoc = pa != null ? pa.getEquipSpawn() : null;
         if (respawnLoc == null) {
@@ -116,6 +140,14 @@ public class PlayerListener implements Listener {
         if (respawnLoc != null) {
             event.setRespawnLocation(respawnLoc);
         }
+    }
+
+    /** Verhindert, dass Spieler Items im Event droppen (bleiben sonst bis zur nächsten Wave erhalten). */
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        MobWaveGame game = plugin.getGameManager().getGameByPlayer(event.getPlayer());
+        if (game == null) return;
+        event.setCancelled(true);
     }
 
     // ─── Blockschutz ────────────────────────────────────────────────────────

@@ -81,6 +81,7 @@ public class MobWaveGame {
     private final int maxWaves;
     private final int equipTimeout;
     private final int waveCompletedPoints;
+    private final int waveScalingPerWave;
     private final int perfectRunBonus;
 
     public MobWaveGame(MobWave plugin, String gameId, Location lobbySpawn, List<PlayerArena> arenas) {
@@ -94,7 +95,8 @@ public class MobWaveGame {
 
         this.maxWaves = plugin.getConfig().getInt("event.maxWaves", 20);
         this.equipTimeout = plugin.getConfig().getInt("event.equipPhaseTimeout", 90);
-        this.waveCompletedPoints = plugin.getConfig().getInt("points.waveCompleted", 5);
+        this.waveCompletedPoints = plugin.getConfig().getInt("points.waveCompleted", 3);
+        this.waveScalingPerWave = plugin.getConfig().getInt("points.waveScalingPerWave", 1);
         this.perfectRunBonus = plugin.getConfig().getInt("points.perfectRunBonus", 5);
 
         this.bossBar = BossBar.bossBar(
@@ -151,19 +153,26 @@ public class MobWaveGame {
         player.showBossBar(bossBar);
         if (phase == GamePhase.EQUIP) {
             broadcastToAll("§e" + player.getName() + " §7hat die Verbindung wiederhergestellt.");
-            // Ready-Status zurücksetzen – Spieler soll selbst entscheiden
             readyPlayers.remove(uuid);
             player.setGameMode(GameMode.ADVENTURE);
             PlayerArena pa = playerArenaMap.get(uuid);
             if (pa != null && pa.getEquipSpawn() != null) player.teleport(pa.getEquipSpawn());
             MessageUtil.send(player, "§aWillkommen zurück! Du spielst weiter in deiner Instanz.");
         } else if (phase == GamePhase.WAVE) {
-            // Wave gilt als Niederlage für diesen Spieler – er wartet auf die nächste Ausrüstungsphase.
-            // deadPlayersThisWave bleibt gesetzt → Spieler gilt weiter als ausgeschieden.
-            player.setGameMode(GameMode.ADVENTURE);
-            if (lobbySpawn != null) player.teleport(lobbySpawn);
-            MessageUtil.send(player, "§cDu hast die laufende Wave verpasst.");
-            MessageUtil.send(player, "§7Du steigst in der nächsten Ausrüstungsphase wieder ein.");
+            if (deadPlayersThisWave.contains(uuid)) {
+                // War bereits gestorben / ausgeschieden – als Zuschauer zurück
+                player.setGameMode(GameMode.SPECTATOR);
+                PlayerArena pa = playerArenaMap.get(uuid);
+                if (pa != null && pa.getEquipSpawn() != null) player.teleport(pa.getEquipSpawn());
+                MessageUtil.send(player, "§7Willkommen zurück! Du bist Zuschauer bis zur nächsten Ausrüstungsphase.");
+            } else {
+                // Durch Disconnect Wave verpasst – als Niederlage werten
+                deadPlayersThisWave.add(uuid);
+                player.setGameMode(GameMode.ADVENTURE);
+                if (lobbySpawn != null) player.teleport(lobbySpawn);
+                MessageUtil.send(player, "§cDu hast die laufende Wave verpasst.");
+                MessageUtil.send(player, "§7Du steigst in der nächsten Ausrüstungsphase wieder ein.");
+            }
         }
     }
 
@@ -391,13 +400,15 @@ public class MobWaveGame {
     private void onWaveCompleted() {
         broadcastToAll("§aWave §e" + currentWave + " §ageschafft!");
         waveHistory.add(new WaveResult(currentWave, currentWaveType, true));
+        // Punkte skalieren: Basis + (Wave-Nummer - 1) * Skalierung
+        int wavePoints = waveCompletedPoints + (currentWave - 1) * waveScalingPerWave;
         for (UUID uuid : participants.keySet()) {
             Player player = Bukkit.getPlayer(uuid);
             PlayerData data = participants.get(uuid);
             if (player != null && data != null) {
-                data.addPoints(waveCompletedPoints);
+                data.addPoints(wavePoints);
                 data.incrementWavesSurvived();
-                MessageUtil.send(player, "§a+" + waveCompletedPoints + " Punkte §7für Wave " + currentWave + "!");
+                MessageUtil.send(player, "§a+" + wavePoints + " Punkte §7für Wave " + currentWave + "!");
 
                 if (!data.hasTookDamageThisWave() && !deadPlayersThisWave.contains(uuid)) {
                     data.addPoints(perfectRunBonus);
@@ -522,10 +533,29 @@ public class MobWaveGame {
                 PlayerArena pa = playerArenaMap.get(uuid);
                 if (pa != null) pa.release();
             }
+            // Teilnehmer-UUIDs sichern (für Zuschauer-Angebot nach participants.clear())
+            Set<UUID> formerParticipants = new HashSet<>(participants.keySet());
+
             participants.clear();
             playerArenaMap.clear();
             playerMobs.clear();
             plugin.getGameManager().cleanupGame(gameId);
+
+            // Zuschauer-Angebot: andere laufende Instanzen beobachten
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                for (UUID uuid : formerParticipants) {
+                    Player p = Bukkit.getPlayer(uuid);
+                    if (p == null || !p.isOnline()) continue;
+                    MobWaveGame target = plugin.getGameManager().findActiveGameToSpectate(gameId);
+                    if (target != null && target.getLobbySpawn() != null) {
+                        p.setGameMode(GameMode.SPECTATOR);
+                        p.teleport(target.getLobbySpawn());
+                        plugin.getGameManager().addSpectator(p.getUniqueId(), target.getGameId());
+                        MessageUtil.send(p, "§aDu schaust jetzt anderen Instanzen zu!");
+                        MessageUtil.send(p, "§7Trenne die Verbindung zum Beenden.");
+                    }
+                }
+            }, 5L);
 
             if (instanceWorld != null) {
                 plugin.getTemplateWorldManager().deleteInstance(instanceWorld);
@@ -674,15 +704,33 @@ public class MobWaveGame {
         if (compassTask != null) { compassTask.cancel(); compassTask = null; }
     }
 
-    /** Erzwingt jede 2 Sekunden, dass alle Event-Monster ihren Spieler targeten. */
+    /** Erzwingt jede 2 Sekunden, dass alle Event-Monster den nächsten lebenden Spieler targeten. */
     private void updateMobTargets() {
-        for (Map.Entry<UUID, List<LivingEntity>> entry : playerMobs.entrySet()) {
-            Player target = Bukkit.getPlayer(entry.getKey());
-            if (target == null || !target.isOnline()) continue;
-            for (LivingEntity mob : entry.getValue()) {
+        // Alle lebenden, online Teilnehmer (keine Toten / Zuschauer)
+        List<Player> targets = participants.keySet().stream()
+                .filter(uuid -> !deadPlayersThisWave.contains(uuid))
+                .map(Bukkit::getPlayer)
+                .filter(p -> p != null && p.isOnline() && p.getGameMode() != GameMode.SPECTATOR)
+                .collect(Collectors.toList());
+        if (targets.isEmpty()) return;
+
+        for (List<LivingEntity> mobs : playerMobs.values()) {
+            for (LivingEntity mob : mobs) {
                 if (!mob.isValid() || mob.isDead()) continue;
-                if (mob instanceof Mob m && !(target.equals(m.getTarget()))) {
-                    m.setTarget(target);
+                if (!(mob instanceof Mob m)) continue;
+                // Nächsten lebenden Spieler in derselben Welt finden
+                Player nearest = null;
+                double nearestDist = Double.MAX_VALUE;
+                for (Player p : targets) {
+                    if (!mob.getWorld().equals(p.getWorld())) continue;
+                    double dist = mob.getLocation().distanceSquared(p.getLocation());
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = p;
+                    }
+                }
+                if (nearest != null && !nearest.equals(m.getTarget())) {
+                    m.setTarget(nearest);
                 }
             }
         }
@@ -808,6 +856,7 @@ public class MobWaveGame {
     public WaveType getCurrentWaveType() { return currentWaveType; }
     public Map<UUID, PlayerData> getParticipants() { return participants; }
     public boolean isParticipant(UUID uuid) { return participants.containsKey(uuid); }
+    public boolean isDeadThisWave(UUID uuid) { return deadPlayersThisWave.contains(uuid); }
     public PlayerArena getPlayerArena(UUID uuid) { return playerArenaMap.get(uuid); }
 
     public boolean canJoin() {
